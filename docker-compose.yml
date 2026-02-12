@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  real-estate-monitor:
+    build: .
+    container_name: wroclaw-property-monitor
+    restart: unless-stopped
+    volumes:
+      # Mapuj katalog z danymi
+      - ./data:/data
+      # Mapuj konfigurację
+      - ./config.json:/app/config.json:ro
+      # Mapuj dashboard (opcjonalnie)
+      - ./dashboard.html:/app/dashboard.html
+    environment:
+      - TZ=Europe/Warsaw
+    # Opcjonalne limity zasobów
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+# Przykład użycia:
+# 1. Stwórz plik config.json
+# 2. docker-compose up -d
+# 3. docker-compose logs -f (sprawdź logi)
+# 4. docker-compose down (zatrzymaj)

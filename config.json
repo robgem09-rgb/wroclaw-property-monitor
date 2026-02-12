@@ -1,0 +1,33 @@
+{
+  "criteria": {
+    "min_price": 250000,
+    "max_price": 450000,
+    "min_area": 40,
+    "max_area": 65,
+    "city": "Wrocław",
+    "districts": []
+  },
+  "notifications": {
+    "email": {
+      "enabled": true,
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "sender": "twoj_email@gmail.com",
+      "password": "haslo_aplikacji_gmail",
+      "recipients": [
+        "twoj_email@gmail.com"
+      ]
+    },
+    "telegram": {
+      "enabled": false,
+      "bot_token": "your_telegram_bot_token",
+      "chat_id": "your_chat_id"
+    }
+  },
+  "check_interval_minutes": 30,
+  "portals": [
+    "otodom",
+    "olx",
+    "gratka"
+  ]
+}
