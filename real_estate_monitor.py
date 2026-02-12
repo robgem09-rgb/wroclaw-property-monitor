@@ -599,233 +599,87 @@ class RealEstateMonitor:
             except Exception as e:
                 print(f"  ✗ Błąd wysyłania Telegram: {e}")
     
-    def generate_dashboard_html(self):
-        """Generuje dashboard HTML z ofertami"""
-        self.cursor.execute('''
-            SELECT portal, title, price, area, price_per_m2, location, url, first_seen
-            FROM properties 
-            WHERE is_active = 1 
-            ORDER BY first_seen DESC 
-            LIMIT 100
-        ''')
-        
-        properties = self.cursor.fetchall()
-        
-        html = f"""
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitor Nieruchomości - Wrocław</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: #f5f7fa;
-            padding: 20px;
-        }}
-        .container {{ max-width: 1200px; margin: 0 auto; }}
-        header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }}
-        h1 {{ font-size: 32px; margin-bottom: 10px; }}
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
-        .stat-card {{
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .stat-value {{ font-size: 28px; font-weight: bold; color: #667eea; }}
-        .stat-label {{ color: #718096; margin-top: 5px; }}
-        .filters {{
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .property-grid {{
-            display: grid;
-            gap: 20px;
-        }}
-        .property-card {{
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }}
-        .property-card:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
-        }}
-        .property-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 15px;
-        }}
-        .property-title {{
-            font-size: 18px;
-            font-weight: 600;
-            color: #2d3748;
-            flex: 1;
-        }}
-        .portal-badge {{
-            background: #edf2f7;
-            color: #4a5568;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }}
-        .portal-badge.otodom {{ background: #fef5e7; color: #d68910; }}
-        .portal-badge.olx {{ background: #e8f8f5; color: #16a085; }}
-        .portal-badge.gratka {{ background: #fdecea; color: #e74c3c; }}
-        .property-price {{
-            font-size: 28px;
-            font-weight: bold;
-            color: #27ae60;
-            margin: 15px 0;
-        }}
-        .property-details {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
-            margin: 15px 0;
-        }}
-        .detail-item {{
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: #4a5568;
-        }}
-        .detail-icon {{ font-size: 18px; }}
-        .property-footer {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #e2e8f0;
-        }}
-        .property-date {{
-            color: #a0aec0;
-            font-size: 14px;
-        }}
-        .property-link {{
-            background: #667eea;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: background 0.2s;
-        }}
-        .property-link:hover {{
-            background: #5568d3;
-        }}
-        .updated {{ 
-            text-align: center; 
-            color: #a0aec0; 
-            margin-top: 30px;
-            font-size: 14px;
-        }}
-        input, select {{
-            padding: 10px;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            margin-right: 10px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🏠 Monitor Nieruchomości</h1>
-            <p>Mieszkania na sprzedaż we Wrocławiu</p>
-        </header>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-value">{len(properties)}</div>
-                <div class="stat-label">Aktywnych ofert</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{len([p for p in properties if p[0] == 'otodom'])}</div>
-                <div class="stat-label">Otodom</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{len([p for p in properties if p[0] == 'olx'])}</div>
-                <div class="stat-label">OLX</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{len([p for p in properties if p[0] == 'gratka'])}</div>
-                <div class="stat-label">Gratka</div>
-            </div>
-        </div>
-        
-        <div class="property-grid">
-"""
-        
-        for prop in properties:
-            portal, title, price, area, price_per_m2, location, url, first_seen = prop
-            date_str = datetime.fromisoformat(str(first_seen)).strftime('%d.%m.%Y %H:%M')
-            
-            html += f"""
-            <div class="property-card">
-                <div class="property-header">
-                    <div class="property-title">{title}</div>
-                    <span class="portal-badge {portal}">{portal}</span>
-                </div>
-                <div class="property-price">{price:,.0f} zł</div>
-                <div class="property-details">
-                    <div class="detail-item">
-                        <span class="detail-icon">📐</span>
-                        <span>{area} m²</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-icon">💰</span>
-                        <span>{price_per_m2:,.0f} zł/m²</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-icon">📍</span>
-                        <span>{location}</span>
-                    </div>
-                </div>
-                <div class="property-footer">
-                    <span class="property-date">Dodano: {date_str}</span>
-                    <a href="{url}" target="_blank" class="property-link">Zobacz →</a>
+    def generate_dashboard_html(self, properties: List[Dict] = None):
+        """Generuje plik HTML dashboardu na podstawie listy ofert"""
+        # Jeśli nie przekazano listy, pobieramy ją z bazy jako fallback
+        if properties is None:
+            properties = self.get_recent_properties(limit=100)
+
+        print(f"DEBUG: Generowanie HTML dla {len(properties)} ofert", flush=True)
+
+        html_template = """
+        <!DOCTYPE html>
+        <html lang="pl">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Monitor Nieruchomości Wrocław</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/bootstrap.min.css" rel="stylesheet">
+            <style>
+                body { background-color: #f8f9fa; }
+                .portal-olx { color: #002f34; font-weight: bold; }
+                .portal-otodom { color: #00b54b; font-weight: bold; }
+                .price-tag { font-size: 1.2rem; color: #d32f2f; font-weight: bold; }
+                .table-container { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            </style>
+        </head>
+        <body>
+            <div class="container mt-5">
+                <h1 class="mb-4">Monitor Nieruchomości Wrocław</h1>
+                <p class="text-muted">Ostatnia aktualizacja: {last_update}</p>
+                
+                <div class="table-container">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Portal</th>
+                                <th>Tytuł</th>
+                                <th>Cena</th>
+                                <th>Metraż</th>
+                                <th>Cena/m²</th>
+                                <th>Lokalizacja</th>
+                                <th>Akcja</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table_rows}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-"""
-        
-        html += f"""
-        </div>
-        <p class="updated">Ostatnia aktualizacja: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}</p>
-    </div>
-</body>
-</html>
-"""
-        
-        with open('dashboard.html', 'w', encoding='utf-8') as f:
-            f.write(html)
-        
-        print("  ✓ Dashboard zaktualizowany: dashboard.html", flush=True)
-    
+        </body>
+        </html>
+        """
+
+        rows = ""
+        for p in properties:
+            portal_class = f"portal-{p['portal'].lower()}"
+            rows += f"""
+            <tr>
+                <td><span class="{portal_class}">{p['portal'].upper()}</span></td>
+                <td>{p['title']}</td>
+                <td><span class="price-tag">{p['price']:,} zł</span></td>
+                <td>{p['area']} m²</td>
+                <td>{p['price_per_m2']:,} zł</td>
+                <td>{p['location']}</td>
+                <td><a href="{p['url']}" target="_blank" class="btn btn-sm btn-primary">Zobacz</a></td>
+            </tr>
+            """
+
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        final_html = html_template.format(
+            last_update=now_str,
+            table_rows=rows
+        )
+
+        try:
+            # Używamy relatywnej ścieżki (naprawia błąd /home/claude/)
+            output_path = 'dashboard.html'
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(final_html)
+            print(f"✅ Dashboard zapisany pomyślnie w: {output_path}", flush=True)
+        except Exception as e:
+            print(f"❌ Błąd zapisu pliku HTML: {e}", flush=True)    
     def check_properties(self):
         """Główny proces: pobierz, zapisz i odśwież dashboard"""
         print(f"\n{'='*60}", flush=True)
