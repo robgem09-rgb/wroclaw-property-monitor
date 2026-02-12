@@ -36,8 +36,8 @@ def start_http_server():
     
     try:
         server = HTTPServer(('0.0.0.0', port), CustomHandler)
-        print(f"🌐 Dashboard HTTP serwer uruchomiony na porcie {port}")
-        print(f"   Dostęp: http://localhost:{port}/dashboard.html")
+        print(f"🌐 Dashboard HTTP serwer uruchomiony na porcie {port}", flush=True)
+        print(f"   Dostęp: http://localhost:{port}/dashboard.html", flush=True)
         server.serve_forever()
     except Exception as e:
         print(f"⚠️  Nie udało się uruchomić serwera HTTP: {e}")
@@ -61,7 +61,7 @@ class RealEstateMonitor:
         
         # Sprawdź czy są zmienne środowiskowe (Render.com, Railway, itp.)
         if os.getenv('EMAIL_SENDER'):
-            print("📡 Używam konfiguracji ze zmiennych środowiskowych (Cloud)")
+            print("📡 Używam konfiguracji ze zmiennych środowiskowych (Cloud)", flush=True)
             self.config = {
                 "criteria": {
                     "min_price": int(os.getenv('MIN_PRICE', '200000')),
@@ -95,7 +95,7 @@ class RealEstateMonitor:
                 with open(config_file, 'r', encoding='utf-8') as f:
                     self.config = json.load(f)
             except FileNotFoundError:
-                print(f"Brak pliku {config_file}. Tworzę domyślną konfigurację...")
+                print(f"Brak pliku {config_file}. Tworzę domyślną konfigurację...", flush=True)
                 self.config = self.create_default_config()
                 with open(config_file, 'w', encoding='utf-8') as f:
                     json.dump(self.config, f, indent=2, ensure_ascii=False)
@@ -821,7 +821,7 @@ class RealEstateMonitor:
         with open('dashboard.html', 'w', encoding='utf-8') as f:
             f.write(html)
         
-        print("  ✓ Dashboard zaktualizowany: dashboard.html")
+        print("  ✓ Dashboard zaktualizowany: dashboard.html", flush=True)
     
     def check_properties(self):
         """Główna funkcja sprawdzająca oferty"""
