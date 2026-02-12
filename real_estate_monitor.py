@@ -813,16 +813,18 @@ class RealEstateMonitor:
     def run_continuous(self):
         """Ciągłe monitorowanie"""
         interval = self.config['check_interval_minutes']
-        
+        print("DEBUG: RUN CONT 1", flush=True)
         # Uruchom HTTP serwer w osobnym wątku (dla dashboard)
         if os.getenv('PORT'):  # Tylko jeśli jest zmienna PORT (Render, Railway)
             http_thread = threading.Thread(target=start_http_server, daemon=True)
             http_thread.start()
-        
+        print("DEBUG: RUN CONT 2", flush=True)
         print(f"🚀 Uruchamiam monitor (sprawdzanie co {interval} minut)")
         print(f"📧 Powiadomienia email: {'✓' if self.config['notifications']['email']['enabled'] else '✗'}")
         print(f"📱 Powiadomienia Telegram: {'✓' if self.config['notifications']['telegram']['enabled'] else '✗'}")
         print(f"🌐 Portale: {', '.join(self.config['portals'])}\n")
+
+        print("DEBUG: RUN CONT 3", flush=True)
         
         # Pierwsze sprawdzenie od razu
         self.check_properties()
