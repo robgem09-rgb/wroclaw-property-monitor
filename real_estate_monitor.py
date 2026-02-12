@@ -211,6 +211,7 @@ class RealEstateMonitor:
             # Otodom używa API - to przykładowy endpoint
             # W praktyce może wymagać dodatkowej analizy
             response = self.session.get(base_url, params=params, timeout=10)
+            print(f"DEBUG: Status odpowiedzi z {url}: {response.status_code}")
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
