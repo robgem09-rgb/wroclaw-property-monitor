@@ -448,49 +448,58 @@ class RealEstateMonitor:
         
         return properties
     
-    def save_properties(self, properties: List[Dict]) -> List[Dict]:
-        """Zapisuje nieruchomości do bazy, zwraca nowe oferty"""
-        new_properties = []
-        now = datetime.now()
-        
-        for prop in properties:
-            prop_id = self.generate_property_id(prop['portal'], prop['url'])
-            
-            # Sprawdza czy oferta już istnieje
-            self.cursor.execute('SELECT id, price FROM properties WHERE id = ?', (prop_id,))
-            existing = self.cursor.fetchone()
-            
-            if existing:
-                # Aktualizuje last_seen i sprawdza zmianę ceny
-                old_price = existing[1]
-                if old_price != prop['price']:
-                    # Zmiana ceny!
-                    self.cursor.execute('''
-                        UPDATE properties 
-                        SET price = ?, price_per_m2 = ?, last_seen = ?
-                        WHERE id = ?
-                    ''', (prop['price'], prop['price_per_m2'], now, prop_id))
-                    print(f"  💰 Zmiana ceny: {prop['title'][:50]}... ({old_price} → {prop['price']})")
-                else:
-                    self.cursor.execute('UPDATE properties SET last_seen = ? WHERE id = ?', (now, prop_id))
-            else:
-                # Nowa oferta!
-                self.cursor.execute('''
-                    INSERT INTO properties 
-                    (id, portal, title, price, area, price_per_m2, location, url, 
-                     description, first_seen, last_seen, image_url, is_active)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                ''', (
-                    prop_id, prop['portal'], prop['title'], prop['price'], 
-                    prop['area'], prop['price_per_m2'], prop['location'], 
-                    prop['url'], prop['description'], now, now, prop['image_url']
-                ))
-                new_properties.append(prop)
-                print(f"  ✨ Nowa oferta: {prop['title'][:60]}...")
-        
-        self.conn.commit()
-        return new_properties
+    def save_properties(self, properties: List[Dict]):
+        """Zapisuje nowe oferty do bazy i aktualizuje już istniejące"""
+        if not properties:
+            return
     
+        # Używamy formatu string dla daty, aby uniknąć DeprecationWarning w Python 3.12+
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        new_count = 0
+        
+        print(f"DEBUG: Próba zapisu {len(properties)} ofert do bazy...", flush=True)
+    
+        for prop in properties:
+            try:
+                # Sprawdzamy, czy oferta już istnieje (po URL)
+                self.cursor.execute('SELECT id, price FROM properties WHERE url = ?', (prop['url'],))
+                result = self.cursor.fetchone()
+    
+                if result:
+                    prop_id, old_price = result
+                    # Jeśli cena się zmieniła, odnotowujemy to
+                    if float(prop['price']) != float(old_price):
+                        print(f"  💰 Zmiana ceny dla {prop['url']}: {old_price} -> {prop['price']}", flush=True)
+                        self.cursor.execute('''
+                            UPDATE properties 
+                            SET price = ?, last_seen = ?, price_per_m2 = ?
+                            WHERE id = ?
+                        ''', (prop['price'], now_str, prop['price_per_m2'], prop_id))
+                    else:
+                        # Tylko aktualizujemy datę widoczności
+                        self.cursor.execute('UPDATE properties SET last_seen = ? WHERE id = ?', (now_str, prop_id))
+                else:
+                    # Całkowicie nowa oferta
+                    self.cursor.execute('''
+                        INSERT INTO properties (
+                            portal, title, price, area, price_per_m2, 
+                            location, url, description, image_url, first_seen, last_seen
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        prop['portal'], prop['title'], prop['price'], prop['area'], 
+                        prop['price_per_m2'], prop['location'], prop['url'], 
+                        prop.get('description', ''), prop.get('image_url', ''), 
+                        now_str, now_str
+                    ))
+                    new_count += 1
+            
+            except Exception as e:
+                print(f"  ⚠️ Błąd zapisu pojedynczej oferty: {e}", flush=True)
+                continue
+    
+        self.conn.commit()
+        print(f"  ✓ Baza zaktualizowana. Nowych ofert: {new_count}", flush=True)
+        
     def send_email_notification(self, properties: List[Dict]):
         """Wysyła powiadomienie email o nowych ofertach"""
         if not properties or not self.config['notifications']['email']['enabled']:
