@@ -449,57 +449,51 @@ class RealEstateMonitor:
         return properties
     
     def save_properties(self, properties: List[Dict]):
-        """Zapisuje nowe oferty do bazy i aktualizuje już istniejące"""
+        """Zapisuje oferty do bazy danych bez błędów datetime"""
         if not properties:
             return
-    
-        # Używamy formatu string dla daty, aby uniknąć DeprecationWarning w Python 3.12+
+
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         new_count = 0
-        
-        print(f"DEBUG: Próba zapisu {len(properties)} ofert do bazy...", flush=True)
-    
+        updated_count = 0
+
         for prop in properties:
             try:
-                # Sprawdzamy, czy oferta już istnieje (po URL)
                 self.cursor.execute('SELECT id, price FROM properties WHERE url = ?', (prop['url'],))
                 result = self.cursor.fetchone()
-    
+
                 if result:
                     prop_id, old_price = result
-                    # Jeśli cena się zmieniła, odnotowujemy to
                     if float(prop['price']) != float(old_price):
-                        print(f"  💰 Zmiana ceny dla {prop['url']}: {old_price} -> {prop['price']}", flush=True)
+                        # Zmiana ceny
                         self.cursor.execute('''
                             UPDATE properties 
                             SET price = ?, last_seen = ?, price_per_m2 = ?
                             WHERE id = ?
                         ''', (prop['price'], now_str, prop['price_per_m2'], prop_id))
+                        updated_count += 1
                     else:
-                        # Tylko aktualizujemy datę widoczności
+                        # Tylko aktualizacja czasu widoczności
                         self.cursor.execute('UPDATE properties SET last_seen = ? WHERE id = ?', (now_str, prop_id))
                 else:
-                    # Całkowicie nowa oferta
+                    # Nowy wpis
                     self.cursor.execute('''
                         INSERT INTO properties (
                             portal, title, price, area, price_per_m2, 
-                            location, url, description, image_url, first_seen, last_seen
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            location, url, first_seen, last_seen
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         prop['portal'], prop['title'], prop['price'], prop['area'], 
                         prop['price_per_m2'], prop['location'], prop['url'], 
-                        prop.get('description', ''), prop.get('image_url', ''), 
                         now_str, now_str
                     ))
                     new_count += 1
-            
             except Exception as e:
-                print(f"  ⚠️ Błąd zapisu pojedynczej oferty: {e}", flush=True)
-                continue
-    
+                print(f"  ⚠️ Błąd zapisu SQL: {e}", flush=True)
+
         self.conn.commit()
-        print(f"  ✓ Baza zaktualizowana. Nowych ofert: {new_count}", flush=True)
-        
+        print(f"  💾 DB: +{new_count} nowych, ~{updated_count} zmian cen", flush=True) 
+    
     def send_email_notification(self, properties: List[Dict]):
         """Wysyła powiadomienie email o nowych ofertach"""
         if not properties or not self.config['notifications']['email']['enabled']:
@@ -833,44 +827,46 @@ class RealEstateMonitor:
         print("  ✓ Dashboard zaktualizowany: dashboard.html", flush=True)
     
     def check_properties(self):
-        """Główna funkcja sprawdzająca oferty"""
-        print(f"\n{'='*60}")
-        print(f"🔄 Sprawdzam oferty - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}\n")
-        
-        all_properties = []
-        
-        # Zbiera z wszystkich portali
-        if 'otodom' in self.config['portals']:
-            all_properties.extend(self.scrape_otodom())
-        
-        if 'olx' in self.config['portals']:
-            all_properties.extend(self.scrape_olx())
-        
-        if 'gratka' in self.config['portals']:
-            all_properties.extend(self.scrape_gratka())
-        
-        print(f"\n📊 Łącznie znaleziono: {len(all_properties)} ofert")
-        
-        # Zapisuje do bazy
-        new_properties = self.save_properties(all_properties)
-        
-        if new_properties:
-            print(f"✨ Nowych ofert: {len(new_properties)}")
-            # Wysyła powiadomienia
-            self.send_email_notification(new_properties)
-            self.send_telegram_notification(new_properties)
-        else:
-            print("ℹ️  Brak nowych ofert")
+        """Główny proces: pobierz, zapisz i odśwież dashboard"""
+        print(f"\n{'='*60}", flush=True)
+        print(f"🔄 Sprawdzam oferty - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+        print(f"{'='*60}\n", flush=True)
 
-        print(f"DEBUG: Łącznie do zapisu: {len(all_properties)} ofert", flush=True)
-        for p in all_properties:
-            print(f"  - {p['portal']}: {p['title'][:30]}...", flush=True)
+        # 1. Pobieranie danych z portali
+        olx_data = self.scrape_olx()
+        otodom_data = self.scrape_otodom()
         
-        # Generuje dashboard
-        self.generate_dashboard_html()
+        # Łączymy listy dla celów logowania
+        all_found = olx_data + otodom_data
+        print(f"\n📊 Łącznie znaleziono w sieci: {len(all_found)} ofert", flush=True)
+
+        # 2. Zapis do bazy (aktualizuje ceny i daty)
+        self.save_properties(all_found)
+
+        # 3. Pobranie ŚWIEŻEJ listy z bazy (komplet danych z historią)
+        # To gwarantuje, że dashboard pokaże to, co faktycznie jest w bazie
+        properties_to_show = self.get_recent_properties(limit=100)
         
-        print(f"\n{'='*60}\n")
+        # 4. Generowanie dashboardu
+        if properties_to_show:
+            self.generate_dashboard_html(properties_to_show)
+            print(f"✅ Dashboard zaktualizowany o {len(properties_to_show)} ofert.", flush=True)
+        else:
+            print("⚠️ Brak ofert do wyświetlenia w dashboardzie.", flush=True)
+    
+    def get_recent_properties(self, limit: int = 100) -> List[Dict]:
+        """Pobiera dane z bazy, mapując je na słowniki"""
+        try:
+            self.cursor.execute('PRAGMA table_info(properties)')
+            columns = [col[1] for col in self.cursor.fetchall()]
+            
+            self.cursor.execute('SELECT * FROM properties ORDER BY first_seen DESC LIMIT ?', (limit,))
+            rows = self.cursor.fetchall()
+            
+            return [dict(zip(columns, row)) for row in rows]
+        except Exception as e:
+            print(f"  ✗ Błąd odczytu bazy: {e}", flush=True)
+            return []
     
     def run_once(self):
         """Jednorazowe sprawdzenie"""
