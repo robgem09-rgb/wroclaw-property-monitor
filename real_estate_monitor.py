@@ -834,7 +834,7 @@ class RealEstateMonitor:
 
 if __name__ == '__main__':
     import sys
-    
+    print("DEBUG: Skrypt wystartował", flush=True)
     monitor = RealEstateMonitor()
     
     if len(sys.argv) > 1 and sys.argv[1] == '--once':
