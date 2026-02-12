@@ -193,78 +193,100 @@ class RealEstateMonitor:
             except ValueError:
                 return None
         return None
-    
     def scrape_otodom(self) -> List[Dict]:
         """Zbiera oferty z Otodom"""
         properties = []
-        criteria = self.config['criteria']
+        criteria = self.config.get('criteria', {
+            'min_price': 0, 'max_price': 99999999, 
+            'min_area': 0, 'max_area': 999
+        })
         
-        # Buduje URL z filtrami
-        base_url = "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/dolnoslaskie/wroclaw"
-        params = {
-            'priceMin': criteria['min_price'],
-            'priceMax': criteria['max_price'],
-            'areaMin': criteria['min_area'],
-            'areaMax': criteria['max_area']
-        }
-        
-        print(f"🔍 Szukam na Otodom...")
+        print(f"🔍 Szukam na Otodom...", flush=True)
         
         try:
-            # Otodom używa API - to przykładowy endpoint
-            # W praktyce może wymagać dodatkowej analizy
-            response = self.session.get(base_url, params=params, timeout=10)
-            print(f"DEBUG: Status odpowiedzi z {url}: {response.status_code}")
+            # URL dla Wrocławia, sortowanie od najnowszych
+            base_url = "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/dolnoslaskie/wroclaw/wroclaw/wroclaw?limit=36&ownerTypeSingleSelect=ALL&by=DEFAULT&direction=DESC&viewType=listing"
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # Znajduje listingi (struktura HTML może się zmienić)
-                listings = soup.find_all('article', {'data-cy': 'listing-item'})
-                
-                for listing in listings[:20]:  # Limit 20 ofert na skan
+            response = self.session.get(base_url, timeout=15)
+            print(f"  DEBUG: Status odpowiedzi Otodom: {response.status_code}", flush=True)
+            
+            if response.status_code != 200:
+                print(f"  ✗ Otodom zablokował zapytanie (Status: {response.status_code})", flush=True)
+                return []
+    
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # METODA 1: Szukanie po selektorach danych (data-cy)
+            listings = soup.find_all('li', {'data-cy': 'listing-item'})
+            print(f"  DEBUG: Znaleziono li[data-cy]: {len(listings)}", flush=True)
+    
+            # METODA 2: Jeśli Metoda 1 zawiedzie, szukamy w skrypcie JSON (najbardziej stabilne)
+            if not listings:
+                print("  DEBUG: Próbuję metody JSON fallback...", flush=True)
+                import json
+                next_data = soup.find('script', id='__NEXT_DATA__')
+                if next_data:
+                    data = json.loads(next_data.string)
+                    # Ścieżka do ofert w JSON Otodom może być głęboka, to jest uproszczony schemat:
                     try:
-                        title_elem = listing.find('h3')
-                        price_elem = listing.find('span', text=re.compile(r'zł'))
-                        area_elem = listing.find('span', text=re.compile(r'm²'))
-                        link_elem = listing.find('a', href=True)
-                        location_elem = listing.find('p', {'data-cy': 'listing-item-location'})
-                        
-                        if not all([title_elem, price_elem, link_elem]):
-                            continue
-                        
-                        title = title_elem.get_text(strip=True)
-                        price = self.extract_price(price_elem.get_text())
-                        area = self.extract_area(area_elem.get_text() if area_elem else '')
-                        url = link_elem['href']
-                        location = location_elem.get_text(strip=True) if location_elem else ''
-                        
-                        if not url.startswith('http'):
-                            url = 'https://www.otodom.pl' + url
-                        
-                        if price and area:
+                        items = data['props']['pageProps']['data']['searchAds']['items']
+                        print(f"  DEBUG: Znaleziono {len(items)} ofert w JSON", flush=True)
+                        # Tutaj musiałbyś przemapować JSON na swój format słownika
+                    except KeyError:
+                        pass
+    
+            for listing in listings:
+                try:
+                    # Wyciąganie linku - kluczowe dla Otodom
+                    link_elem = listing.find('a', {'data-cy': 'listing-item-link'})
+                    if not link_elem: continue
+                    
+                    url = 'https://www.otodom.pl' + link_elem['href']
+                    
+                    # Cena
+                    price_elem = listing.find('span', {'data-cy': 'listing-item-price'})
+                    price_text = price_elem.get_text(strip=True) if price_elem else "0"
+                    price = self.extract_price(price_text)
+                    
+                    # Tytuł i Metraż
+                    title_elem = listing.find('p', {'data-cy': 'listing-item-title'})
+                    title = title_elem.get_text(strip=True) if title_elem else "Brak tytułu"
+                    
+                    # Metraż w Otodom często jest w osobnym span
+                    area_elem = listing.find('span', {'data-cy': 'listing-item-area'})
+                    if area_elem:
+                        area = self.extract_area(area_elem.get_text())
+                    else:
+                        area = self.extract_area(title)
+    
+                    # Filtrowanie
+                    if price and criteria['min_price'] <= price <= criteria['max_price']:
+                        if not criteria['min_area'] or (area and area >= criteria['min_area']):
                             properties.append({
                                 'portal': 'otodom',
                                 'title': title,
                                 'price': price,
-                                'area': area,
-                                'price_per_m2': round(price / area, 2),
-                                'location': location,
+                                'area': area if area else 0,
+                                'price_per_m2': round(price / area, 2) if area and area > 0 else 0,
+                                'location': 'Wrocław',
                                 'url': url,
                                 'description': '',
                                 'image_url': ''
                             })
-                    except Exception as e:
-                        print(f"  ⚠️  Błąd parsowania oferty: {e}")
-                        continue
-                
-                print(f"  ✓ Znaleziono {len(properties)} ofert z Otodom")
-        
+    
+                    if len(properties) >= 30: break
+    
+                except Exception as e:
+                    print(f"    ⚠️ Błąd przy ofercie Otodom: {e}", flush=True)
+                    continue
+    
+            print(f"  ✓ Sukces! Znaleziono {len(properties)} ofert z Otodom", flush=True)
+    
         except Exception as e:
-            print(f"  ✗ Błąd Otodom: {e}")
+            print(f"  ✗ Błąd krytyczny scrape_otodom: {e}", flush=True)
         
         return properties
-    
+            
     def scrape_olx(self) -> List[Dict]:
         """Zbiera oferty z OLX"""
         properties = []
