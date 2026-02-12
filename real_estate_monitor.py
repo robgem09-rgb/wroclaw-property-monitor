@@ -841,6 +841,8 @@ if __name__ == '__main__':
     monitor = RealEstateMonitor()
     
     if len(sys.argv) > 1 and sys.argv[1] == '--once':
+        print("DEBUG: Skrypt wystartował RUN ONCE", flush=True)
         monitor.run_once()
-    else:
+    else:      
+        print("DEBUG: Skrypt wystartował RUN CONT", flush=True)
         monitor.run_continuous()
