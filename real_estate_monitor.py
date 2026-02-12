@@ -28,8 +28,42 @@ class RealEstateMonitor:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
         
-    def load_config(self, config_file):
-        """Ładuje konfigurację z pliku JSON"""
+def load_config(self, config_file):
+    """Ładuje konfigurację z pliku JSON lub zmiennych środowiskowych"""
+    import os
+    
+    # Sprawdź czy są zmienne środowiskowe (Render.com)
+    if os.getenv('EMAIL_SENDER'):
+        print("📡 Używam konfiguracji ze zmiennych środowiskowych (Render)")
+        self.config = {
+            "criteria": {
+                "min_price": int(os.getenv('MIN_PRICE', '200000')),
+                "max_price": int(os.getenv('MAX_PRICE', '500000')),
+                "min_area": float(os.getenv('MIN_AREA', '35')),
+                "max_area": float(os.getenv('MAX_AREA', '70')),
+                "city": "Wrocław",
+                "districts": []
+            },
+            "notifications": {
+                "email": {
+                    "enabled": True,
+                    "smtp_server": "smtp.gmail.com",
+                    "smtp_port": 587,
+                    "sender": os.getenv('EMAIL_SENDER'),
+                    "password": os.getenv('EMAIL_PASSWORD'),
+                    "recipients": [os.getenv('EMAIL_RECIPIENT', os.getenv('EMAIL_SENDER'))]
+                },
+                "telegram": {
+                    "enabled": False,
+                    "bot_token": "",
+                    "chat_id": ""
+                }
+            },
+            "check_interval_minutes": int(os.getenv('CHECK_INTERVAL', '60')),
+            "portals": ["otodom", "olx", "gratka"]
+        }
+    else:
+        # Używa pliku config.json (lokalnie)
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
                 self.config = json.load(f)
