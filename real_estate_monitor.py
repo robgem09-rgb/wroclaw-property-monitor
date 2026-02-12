@@ -288,4 +288,53 @@ class RealEstateMonitor:
         self.conn.commit()
         return new_properties
 
-    def send_email_notification(self, properties
+    def send_email_notification(self, properties: List[Dict]):
+        if not properties or not self.config['notifications']['email']['enabled']: return
+        email_config = self.config['notifications']['email']
+        if not email_config['password']: return
+
+        html_content = "<html><body><h2>Nowe oferty Wrocław</h2>"
+        for prop in properties:
+            html_content += f"<p><b>{prop['title']}</b><br>Cena: {prop['price']} zł<br><a href='{prop['url']}'>Link</a></p><hr>"
+        html_content += "</body></html>"
+
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = f"🏠 {len(properties)} nowych ofert"
+            msg['From'] = email_config['sender']
+            msg['To'] = ', '.join(email_config['recipients'])
+            msg.attach(MIMEText(html_content, 'html'))
+            with smtplib.SMTP(email_config['smtp_server'], email_config['smtp_port']) as server:
+                server.starttls()
+                server.login(email_config['sender'], email_config['password'])
+                server.send_message(msg)
+            print("  ✓ E-mail wysłany")
+        except Exception as e:
+            print(f"  ✗ Błąd e-mail: {e}")
+
+    def check_properties(self):
+        print(f"\n🔄 Skanowanie: {datetime.now().strftime('%H:%M:%S')}")
+        all_props = []
+        if 'otodom' in self.config['portals']: all_props.extend(self.scrape_otodom())
+        if 'olx' in self.config['portals']: all_props.extend(self.scrape_olx())
+        if 'gratka' in self.config['portals']: all_props.extend(self.scrape_gratka())
+        
+        new_props = self.save_properties(all_props)
+        if new_props:
+            print(f"  ✨ Nowe oferty: {len(new_props)}")
+            self.send_email_notification(new_props)
+        else:
+            print("  ℹ Brak nowych ofert")
+
+    def run_continuous(self):
+        interval = self.config['check_interval_minutes']
+        print(f"🚀 Monitor startuje (co {interval} min)")
+        self.check_properties()
+        schedule.every(interval).minutes.do(self.check_properties)
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+
+if __name__ == '__main__':
+    monitor = RealEstateMonitor()
+    monitor.run_continuous()
