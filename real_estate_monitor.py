@@ -336,5 +336,21 @@ class RealEstateMonitor:
             time.sleep(1)
 
 if __name__ == '__main__':
+    # --- DODAJ TO, ABY OSZUKAĆ RENDERA ---
+    import http.server
+    import socketserver
+    import threading
+
+    def run_dummy_server():
+        port = int(os.environ.get("PORT", 10000))
+        handler = http.server.SimpleHTTPRequestHandler
+        with socketserver.TCPServer(("", port), handler) as httpd:
+            print(f"✅ Dummy server running on port {port}")
+            httpd.serve_forever()
+
+    # Uruchom serwer w osobnym wątku
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    # -------------------------------------
+
     monitor = RealEstateMonitor()
     monitor.run_continuous()
