@@ -761,7 +761,7 @@ class RealEstateMonitor:
 </html>
 """
         
-        with open('/home/claude/dashboard.html', 'w', encoding='utf-8') as f:
+        with open('dashboard.html', 'w', encoding='utf-8') as f:
             f.write(html)
         
         print("  ✓ Dashboard zaktualizowany: dashboard.html")
