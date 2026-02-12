@@ -46,8 +46,11 @@ class RealEstateMonitor:
     def __init__(self, config_file='config.json'):
         """Inicjalizacja monitora"""
         self.load_config(config_file)
+        print("DEBUG: Skrypt wystartował 1", flush=True)
         self.init_database()
+        print("DEBUG: Skrypt wystartował 2", flush=True)
         self.session = requests.Session()
+        print("DEBUG: Skrypt wystartował 3", flush=True)
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
