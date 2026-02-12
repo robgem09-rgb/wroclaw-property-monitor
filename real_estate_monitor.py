@@ -335,22 +335,32 @@ class RealEstateMonitor:
             schedule.run_pending()
             time.sleep(1)
 
+import http.server
+import socketserver
+import threading
+import os
+
+def run_web_server():
+    # Render podaje port w zmiennej środowiskowej PORT
+    port = int(os.environ.get("PORT", 10000))
+    
+    class DashboardHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            # Zawsze serwuj plik dashboard.html, niezależnie od ścieżki
+            if self.path == '/' or self.path == '/dashboard.html':
+                self.path = 'dashboard.html'
+            return http.server.SimpleHTTPRequestHandler.do_GET(self)
+
+    # Ustaw katalog roboczy, aby serwer widział plik html
+    handler = DashboardHandler
+    with socketserver.TCPServer(("", port), handler) as httpd:
+        print(f"🚀 Dashboard dostępny na porcie {port}")
+        httpd.serve_forever()
+
 if __name__ == '__main__':
-    # --- DODAJ TO, ABY OSZUKAĆ RENDERA ---
-    import http.server
-    import socketserver
-    import threading
-
-    def run_dummy_server():
-        port = int(os.environ.get("PORT", 10000))
-        handler = http.server.SimpleHTTPRequestHandler
-        with socketserver.TCPServer(("", port), handler) as httpd:
-            print(f"✅ Dummy server running on port {port}")
-            httpd.serve_forever()
-
-    # Uruchom serwer w osobnym wątku
-    threading.Thread(target=run_dummy_server, daemon=True).start()
-    # -------------------------------------
-
+    # 1. Uruchom serwer WWW w tle
+    threading.Thread(target=run_web_server, daemon=True).start()
+    
+    # 2. Uruchom bota
     monitor = RealEstateMonitor()
     monitor.run_continuous()
