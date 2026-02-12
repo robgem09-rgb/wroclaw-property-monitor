@@ -853,6 +853,10 @@ class RealEstateMonitor:
             self.send_telegram_notification(new_properties)
         else:
             print("ℹ️  Brak nowych ofert")
+
+        print(f"DEBUG: Łącznie do zapisu: {len(all_properties)} ofert", flush=True)
+        for p in all_properties:
+            print(f"  - {p['portal']}: {p['title'][:30]}...", flush=True)
         
         # Generuje dashboard
         self.generate_dashboard_html()
