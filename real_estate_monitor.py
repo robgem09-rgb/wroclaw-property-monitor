@@ -828,6 +828,8 @@ class RealEstateMonitor:
         
         # Pierwsze sprawdzenie od razu
         self.check_properties()
+
+        print("DEBUG: RUN CONT 4", flush=True)
         
         # Planuje kolejne
         schedule.every(interval).minutes.do(self.check_properties)
