@@ -79,7 +79,7 @@ class RealEstateMonitor:
     def scrape_otodom(self) -> List[Dict]:
         print("🔍 Scrapping Otodom (JSON Method)...", flush=True)
         found = []
-        url = "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie,rynek-wtorny/wiele-lokalizacji?limit=36&ownerTypeSingleSelect=ALL&priceMin=350000&priceMax=450000&roomsNumber=%5BONE%2CTWO%5D&locations=%5Bdolnoslaskie%2Fwroclaw%2Fwroclaw%2Fwroclaw%2Fsrodmiescie%2Cdolnoslaskie%2Fwroclaw%2Fwroclaw%2Fwroclaw%2Fstare-miasto%5D&pricePerMeterMin=11000&pricePerMeterMax=15000&by=DEFAULT&direction=DESC"
+        url = "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie,rynek-wtorny/wiele-lokalizacji?limit=36&ownerTypeSingleSelect=ALL&priceMin=350000&priceMax=450000&roomsNumber=%5BONE%2CTWO%5D&locations=%5Bdolnoslaskie%2Fwroclaw%2Fwroclaw%2Fwroclaw%2Fsrodmiescie%2Cdolnoslaskie%2Fwroclaw%2Fwroclaw%2Fwroclaw%2Fstare-miasto%5D&pricePerMeterMin=11000&pricePerMeterMax=15000&by=DEFAULT&direction=DESC   "
         try:
             res = self.session.get(url, timeout=15)
             if res.status_code != 200:
@@ -152,33 +152,94 @@ class RealEstateMonitor:
     def generate_dashboard(self):
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute('SELECT * FROM properties ORDER BY first_seen DESC LIMIT 50').fetchall()
+            # Pobieramy 60 najnowszych ofert
+            rows = conn.execute('SELECT * FROM properties ORDER BY first_seen DESC LIMIT 60').fetchall()
         
-        table_content = ""
+        cards_content = ""
         for r in rows:
-            table_content += f"""
-            <tr>
-                <td><span class="badge {'bg-success' if r['portal']=='otodom' else 'bg-primary'}">{r['portal']}</span></td>
-                <td><a href="{r['url']}" target="_blank">{r['title'][:60]}...</a></td>
-                <td><strong>{r['price']:,} zł</strong></td>
-                <td>{r['area']} m²</td>
-                <td>{r['location']}</td>
-                <td><small>{r['first_seen'][:16]}</small></td>
-            </tr>"""
+            # Formatowanie dat dla lepszej czytelności
+            try:
+                added_dt = datetime.fromisoformat(r['first_seen']).strftime('%d.%m %H:%M')
+                updated_dt = datetime.fromisoformat(r['last_seen']).strftime('%d.%m %H:%M')
+            except:
+                added_dt = r['first_seen']
+                updated_dt = r['last_seen']
 
-        html = f"""<!DOCTYPE html><html><head>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/bootstrap.min.css" rel="stylesheet">
-            <title>Wroclaw Property Monitor</title></head>
-            <body class="container py-4">
-                <h2 class="mb-4">Wrocław Property Monitor</h2>
-                <table class="table table-striped">
-                    <thead><tr><th>Portal</th><th>Tytuł</th><th>Cena</th><th>m²</th><th>Lok.</th><th>Dodano</th></tr></thead>
-                    <tbody>{table_content}</tbody>
-                </table>
-            </body></html>"""
+            portal_color = "#00b54b" if r['portal'] == 'otodom' else "#002f34"
+            
+            cards_content += f"""
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-header d-flex justify-content-between align-items-center bg-white border-0 pt-3">
+                        <span class="badge" style="background-color: {portal_color}">{r['portal'].upper()}</span>
+                        <small class="text-muted">ID: #{r['id']}</small>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title text-truncate" title="{r['title']}">{r['title']}</h5>
+                        <div class="d-flex align-items-baseline mb-2">
+                            <span class="h4 mb-0 text-danger">{r['price']:,} zł</span>
+                            <span class="ms-2 text-muted small">({r['price_per_m2']:,} zł/m²)</span>
+                        </div>
+                        <p class="card-text mb-1"><strong>Powierzchnia:</strong> {r['area']} m²</p>
+                        <p class="card-text"><i class="bi bi-geo-alt"></i> {r['location']}</p>
+                    </div>
+                    <div class="card-footer bg-light border-0 pb-3">
+                        <div class="row g-0 text-center small text-muted mb-3">
+                            <div class="col-6 border-end">
+                                <div>Dodano</div>
+                                <strong>{added_dt}</strong>
+                            </div>
+                            <div class="col-6">
+                                <div>Widziano</div>
+                                <strong>{updated_dt}</strong>
+                            </div>
+                        </div>
+                        <a href="{r['url']}" target="_blank" class="btn btn-outline-dark w-100">Otwórz ofertę</a>
+                    </div>
+                </div>
+            </div>"""
+
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        with open('index.html', 'w', encoding='utf-8') as f:
-            f.write(html)
+        html = f"""<!DOCTYPE html>
+        <html lang="pl">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/bootstrap.min.css" rel="stylesheet">
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+            <title>Monitor Nieruchomości</title>
+            <style>
+                body {{ background-color: #f4f7f6; font-family: 'Inter', sans-serif; }}
+                .navbar {{ background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+                .card {{ transition: transform 0.2s; }}
+                .card:hover {{ transform: translateY(-5px); }}
+            </style>
+        </head>
+        <body>
+            <nav class="navbar sticky-top mb-4 py-3">
+                <div class="container text-center">
+                    <span class="navbar-brand mb-0 h1 mx-auto">🏠 Wrocław Property Monitor</span>
+                </div>
+            </nav>
+            <div class="container">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="mb-0">Najnowsze oferty</h4>
+                    <span class="badge bg-secondary">Aktualizacja: {now_str}</span>
+                </div>
+                <div class="row">
+                    {cards_content}
+                </div>
+            </div>
+        </body>
+        </html>"""
+        
+        try:
+            with open('index.html', 'w', encoding='utf-8') as f:
+                f.write(html)
+            print(f"✅ Dashboard generated successfully.", flush=True)
+        except Exception as e:
+            print(f"❌ HTML Error: {e}", flush=True)
 
     def run_server(self):
         server_address = ('', self.port)
