@@ -79,7 +79,7 @@ class RealEstateMonitor:
     def scrape_otodom(self) -> List[Dict]:
         print("🔍 Scrapping Otodom (JSON Method)...", flush=True)
         found = []
-        url = "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/dolnoslaskie/wroclaw/wroclaw/wroclaw?limit=36&ownerTypeSingleSelect=ALL&by=DEFAULT&direction=DESC"
+        url = "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie,rynek-wtorny/wiele-lokalizacji?limit=36&ownerTypeSingleSelect=ALL&priceMin=350000&priceMax=450000&roomsNumber=%5BONE%2CTWO%5D&locations=%5Bdolnoslaskie%2Fwroclaw%2Fwroclaw%2Fwroclaw%2Fsrodmiescie%2Cdolnoslaskie%2Fwroclaw%2Fwroclaw%2Fwroclaw%2Fstare-miasto%5D&pricePerMeterMin=11000&pricePerMeterMax=15000&by=DEFAULT&direction=DESC"
         try:
             res = self.session.get(url, timeout=15)
             if res.status_code != 200:
