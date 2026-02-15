@@ -124,8 +124,19 @@ class RealEstateMonitor:
                 price = float(price_data.get('value') or 0)
                 
                 # Bezpieczne pobieranie metrażu
-                area_data = item.get('area') or {}
-                area = float(area_data.get('value') or 0)
+                area = 0.0
+                # Szukamy klucza 'm' (metraż) w charakterystyce
+                for char in item.get('characteristics', []):
+                    if char.get('key') == 'm':
+                        try:
+                            area = float(char.get('value', 0).replace(',', '.'))
+                        except:
+                            area = 0.0
+                        break
+
+                # Jeśli nadal 0, spróbuj pobrać z pola głównego (zależy od wersji API)
+                if area == 0:
+                    area = float(item.get('area', {}).get('value') or 0)
                 
                 # Jeśli cena lub metraż są zerowe, omijamy (często to błędy lub ogłoszenia "Cena do negocjacji")
                 if price == 0: continue
@@ -168,86 +179,70 @@ class RealEstateMonitor:
             conn.row_factory = sqlite3.Row
             rows = conn.execute('SELECT * FROM properties ORDER BY first_seen DESC LIMIT 60').fetchall()
         
-        cards_content = ""
+        cards_html = ""
         for r in rows:
-            # Poprawka formatowania dat, aby uniknąć błędów
-            added = r['first_seen'][:16].replace('T', ' ') if r['first_seen'] else "---"
-            seen = r['last_seen'][:16].replace('T', ' ') if r['last_seen'] else "---"
-            
-            portal_bg = "#00b54b" if r['portal'] == 'otodom' else "#002f34"
-            
-            # Budujemy pojedynczą kolumnę z kartą
-            cards_content += f"""
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100 shadow-sm border-0">
-                    <div class="card-header d-flex justify-content-between bg-white border-0 pt-3">
-                        <span class="badge" style="background-color: {portal_bg}; color: white;">{r['portal'].upper()}</span>
-                        <small class="text-muted">ID: #{r['id']}</small>
+            portal_color = "#00b54b" if r['portal'] == 'otodom' else "#002f34"
+            # Bezpieczne formatowanie dat
+            added = r['first_seen'][:16].replace('T', ' ')
+            seen = r['last_seen'][:16].replace('T', ' ')
+
+            cards_html += f"""
+            <div class="col-12 col-md-6 col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-header border-0 bg-white d-flex justify-content-between align-items-center">
+                        <span class="badge" style="background-color: {portal_color}">{r['portal'].upper()}</span>
+                        <small class="text-muted">#{r['id']}</small>
                     </div>
                     <div class="card-body">
-                        <h6 class="card-title fw-bold" style="height: 3rem; overflow: hidden;">{r['title']}</h6>
-                        <div class="mb-2">
+                        <h6 class="card-title fw-bold text-dark">{r['title'][:70]}</h6>
+                        <div class="my-2">
                             <span class="h4 text-danger fw-bold">{r['price']:,} zł</span><br>
                             <small class="text-muted">({r['price_per_m2']:,} zł/m²)</small>
                         </div>
-                        <p class="mb-1 small"><strong>Powierzchnia:</strong> {r['area']} m²</p>
-                        <p class="small text-muted"><i class="bi bi-geo-alt"></i> Wrocław</p>
+                        <p class="mb-1"><strong>Powierzchnia:</strong> {r['area']} m²</p>
+                        <p class="small text-muted mb-0"><i class="bi bi-geo-alt"></i> Wrocław</p>
                     </div>
                     <div class="card-footer bg-light border-0">
                         <div class="row g-0 text-center small mb-3">
                             <div class="col-6 border-end">
-                                <div class="text-muted" style="font-size: 0.7rem;">DODANO</div>
+                                <div class="text-muted small">DODANO</div>
                                 <strong>{added}</strong>
                             </div>
                             <div class="col-6">
-                                <div class="text-muted" style="font-size: 0.7rem;">WIDZIANO</div>
+                                <div class="text-muted small">WIDZIANO</div>
                                 <strong>{seen}</strong>
                             </div>
                         </div>
-                        <a href="{r['url']}" target="_blank" class="btn btn-dark btn-sm w-100">Otwórz ofertę</a>
+                        <a href="{r['url']}" target="_blank" class="btn btn-dark w-100">Otwórz ofertę</a>
                     </div>
                 </div>
-            </div>"""
+            </div>
+            """
 
-        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Pełny dokument HTML z poprawnym linkowaniem Bootstrapa
-        html = f"""<!DOCTYPE html>
+        full_html = f"""<!DOCTYPE html>
         <html lang="pl">
         <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/bootstrap.min.css" rel="stylesheet">
-            <title>Wrocław Property Monitor</title>
+            <title>Monitor Nieruchomości</title>
             <style>
-                body {{ background-color: #f0f2f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
-                .navbar {{ background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }}
-                .card {{ border-radius: 12px; overflow: hidden; transition: all 0.3s ease; }}
-                .card:hover {{ transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important; }}
+                body {{ background-color: #f8f9fa; padding-top: 20px; }}
+                .card {{ border: none; border-radius: 10px; }}
             </style>
         </head>
         <body>
-            <nav class="navbar mb-5 py-3">
-                <div class="container d-flex justify-content-between align-items-center">
-                    <span class="navbar-brand mb-0 h4 fw-bold text-dark">🏠 Property Monitor</span>
-                    <span class="badge bg-light text-dark border small">Aktualizacja: {now_str}</span>
-                </div>
-            </nav>
             <div class="container">
+                <h2 class="mb-4 fw-bold">🏠 Wrocław Property Monitor</h2>
                 <div class="row">
-                    {cards_content}
+                    {cards_html}
                 </div>
             </div>
-            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/bootstrap.bundle.min.js"></script>
         </body>
         </html>"""
-        
-        try:
-            with open('index.html', 'w', encoding='utf-8') as f:
-                f.write(html)
-            print(f"✅ Dashboard generated successfully.", flush=True)
-        except Exception as e:
-            print(f"❌ HTML Error: {e}", flush=True)
+
+        with open('index.html', 'w', encoding='utf-8') as f:
+            f.write(full_html)
 
     def run_server(self):
         server_address = ('', self.port)
