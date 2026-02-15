@@ -82,23 +82,51 @@ class RealEstateMonitor:
         url = "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/dolnoslaskie/wroclaw/wroclaw/wroclaw?limit=36&ownerTypeSingleSelect=ALL&by=DEFAULT&direction=DESC"
         try:
             res = self.session.get(url, timeout=15)
+            if res.status_code != 200:
+                print(f"  ❌ Otodom Status: {res.status_code}", flush=True)
+                return []
+
             soup = BeautifulSoup(res.content, 'html.parser')
-            json_data = json.loads(soup.find('script', id='__NEXT_DATA__').string)
-            items = json_data['props']['pageProps']['data']['searchAds']['items']
+            script_tag = soup.find('script', id='__NEXT_DATA__')
+            
+            if not script_tag:
+                print("  ❌ Nie znaleziono danych JSON w Otodom", flush=True)
+                return []
+
+            json_data = json.loads(script_tag.string)
+            
+            # Bezpieczne zagłębianie się w strukturę JSON
+            try:
+                items = json_data['props']['pageProps']['data']['searchAds']['items']
+            except (KeyError, TypeError):
+                print("  ❌ Błąd struktury JSON w Otodom", flush=True)
+                return []
             
             for item in items:
-                price = float(item.get('totalPrice', {}).get('value', 0))
-                area = float(item.get('area', {}).get('value', 0))
+                if not item: continue
+                
+                # Bezpieczne pobieranie ceny
+                price_data = item.get('totalPrice') or {}
+                price = float(price_data.get('value') or 0)
+                
+                # Bezpieczne pobieranie metrażu
+                area_data = item.get('area') or {}
+                area = float(area_data.get('value') or 0)
+                
+                # Jeśli cena lub metraż są zerowe, omijamy (często to błędy lub ogłoszenia "Cena do negocjacji")
+                if price == 0: continue
+
                 found.append({
                     'portal': 'otodom',
-                    'title': item.get('title', ''),
+                    'title': item.get('title', 'Brak tytułu'),
                     'price': price,
                     'area': area,
                     'price_per_m2': round(price/area, 2) if area > 0 else 0,
                     'location': 'Wrocław',
                     'url': f"https://www.otodom.pl/pl/oferta/{item.get('slug', '')}"
                 })
-        except Exception as e: print(f"❌ Otodom Error: {e}", flush=True)
+        except Exception as e: 
+            print(f"❌ Otodom Error: {e}", flush=True)
         return found
 
     def save_and_filter(self, properties: List[Dict]):
