@@ -288,8 +288,9 @@ class RealEstateMonitor:
         return properties
             
     def scrape_olx(self) -> List[Dict]:
-        """Zbiera oferty z OLX - wersja mniej wybredna"""
+        """Zbiera oferty z OLX"""
         properties = []
+        # Pobieranie kryteriów z obsługą błędów, jeśli klucze nie istnieją
         criteria = self.config.get('criteria', {
             'min_price': 0, 'max_price': 99999999, 
             'min_area': 0, 'max_area': 999
@@ -298,71 +299,87 @@ class RealEstateMonitor:
         print(f"🔍 Szukam na OLX...", flush=True)
         
         try:
-            # Używamy sortowania po najnowszych
+            # URL OLX dla Wrocławia - dodajemy sortowanie po najnowszych, by szybciej widzieć zmiany
             base_url = "https://www.olx.pl/nieruchomosci/mieszkania/sprzedaz/wroclaw/?search[order]=created_at:desc"
+            
+            # Ustawienie timeout i sprawdzenie statusu
             response = self.session.get(base_url, timeout=15)
+            print(f"  DEBUG: Status odpowiedzi OLX: {response.status_code}", flush=True)
             
             if response.status_code != 200:
-                print(f"  ✗ OLX Status: {response.status_code}", flush=True)
+                print(f"  ✗ OLX zablokował zapytanie (Status: {response.status_code})", flush=True)
                 return []
-
+    
             soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # AKTUALIZACJA: OLX używa teraz głównie data-testid="ad-card"
             listings = soup.find_all('div', {'data-testid': 'ad-card'})
             
-            print(f"  DEBUG: Znaleziono {len(listings)} ogłoszeń na stronie", flush=True)
-
+            # Jeśli nie znaleziono przez testid, spróbujmy przez ogólny kontener (fallback)
+            if not listings:
+                listings = soup.select('div[data-cy="l-card"]')
+    
+            print(f"  DEBUG: Znaleziono surowych kontenerów: {len(listings)}", flush=True)
+            
             for listing in listings:
                 try:
+                    # Szukamy linku i tytułu (tytuł jest zazwyczaj w h6 lub h3)
                     link_elem = listing.find('a', href=True)
-                    if not link_elem: continue
+                    title_elem = listing.find('h6') or listing.find('h3')
+                    price_elem = listing.find('p', {'data-testid': 'ad-price'})
+                    
+                    if not all([link_elem, price_elem]):
+                        continue
                     
                     url = link_elem['href']
-                    if not url.startswith('http'): url = 'https://www.olx.pl' + url
-                    if 'promoted' in url: continue # Omijamy sponsorowane, by nie dublować
-
-                    title_elem = listing.find('h6') or listing.find('h3')
+                    if not url.startswith('http'):
+                        url = 'https://www.olx.pl' + url
+                    
+                    # Omijamy "Wyróżnione" (często duplikaty lub reklamy spoza Wrocławia)
+                    if 'promoted' in url:
+                        continue
+    
                     title = title_elem.get_text(strip=True) if title_elem else "Brak tytułu"
+                    raw_price = price_elem.get_text(strip=True)
+                    price = self.extract_price(raw_price)
                     
-                    price_elem = listing.find('p', {'data-testid': 'ad-price'})
-                    price = self.extract_price(price_elem.get_text()) if price_elem else 0
-                    
-                    # Próba wyciągnięcia metrażu z tytułu lub opisu na karcie
+                    # Wyciąganie metrażu - jeśli nie ma w tytule, szukamy w dodatkowych tagach p
                     area = self.extract_area(title)
                     if not area:
-                        # Szukamy tekstu z metrażem w całym bloku ogłoszenia
-                        area = self.extract_area(listing.get_text(" "))
-
-                    # LOGIKA FILTROWANIA (Mniej restrykcyjna)
-                    # 1. Sprawdzamy cenę
-                    price_ok = (criteria['min_price'] <= price <= criteria['max_price'])
-                    
-                    # 2. Sprawdzamy metraż (jeśli area jest 0 lub None, też przepuszczamy!)
-                    area_ok = (area is None or area == 0 or (criteria['min_area'] <= area <= criteria['max_area']))
-
-                    if price_ok and area_ok:
-                        properties.append({
-                            'portal': 'olx',
-                            'title': title,
-                            'price': price,
-                            'area': area if area else 0,
-                            'price_per_m2': round(price / area, 2) if area and area > 0 else 0,
-                            'location': 'Wrocław',
-                            'url': url
-                        })
-                    else:
-                        # Logujemy dlaczego odrzucono (tylko w trybie debug)
-                        if not price_ok:
-                            print(f"    - Odrzucono (cena: {price})", flush=True)
-                        elif not area_ok:
-                            print(f"    - Odrzucono (metraż: {area})", flush=True)
-
+                        # Szukamy tekstu typu "60 m²" wewnątrz ogłoszenia
+                        details_text = listing.get_text(" ")
+                        area = self.extract_area(details_text)
+    
+                    # Logika filtracji
+                    if price and criteria['min_price'] <= price <= criteria['max_price']:
+                        # Jeśli nie udało się znaleźć metrażu, przypisujemy 1, żeby nie dzielić przez zero
+                        # lub by nie odrzucać oferty (zależnie od Twojej strategii)
+                        valid_area = (area and criteria['min_area'] <= area <= criteria['max_area'])
+                        
+                        if valid_area or area is None: 
+                            properties.append({
+                                'portal': 'olx',
+                                'title': title,
+                                'price': price,
+                                'area': area if area else 0,
+                                'price_per_m2': round(price / area, 2) if area else 0,
+                                'location': 'Wrocław',
+                                'url': url,
+                                'description': '',
+                                'image_url': ''
+                            })
+                            
+                    if len(properties) >= 20: break # Limit na jeden przebieg
+    
                 except Exception as e:
+                    # Logujemy błąd konkretnej oferty, ale lecimy dalej
+                    print(f"    ⚠️ Błąd przy ofercie: {e}", flush=True)
                     continue
-
-            print(f"  ✓ OLX: Dodano {len(properties)} ofert do listy", flush=True)
-
+                    
+            print(f"  ✓ Sukces! Znaleziono {len(properties)} ofert spełniających kryteria", flush=True)
+    
         except Exception as e:
-            print(f"  ✗ Błąd OLX: {e}", flush=True)
+            print(f"  ✗ Błąd krytyczny scrape_olx: {e}", flush=True)
         
         return properties
   
