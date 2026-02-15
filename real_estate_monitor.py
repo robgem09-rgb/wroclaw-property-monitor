@@ -11,9 +11,9 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 class RealEstateMonitor:
     def __init__(self):
-        self.db_path = 'properties.db'
-        self.port = int(os.environ.get('PORT', 10000))
+        # ... reszta initu ...
         self.config = {
+            'update_interval': 1800,  # Domyślnie 30 minut (w sekundach)
             'criteria': {
                 'min_price': 300000,
                 'max_price': 900000,
@@ -27,6 +27,23 @@ class RealEstateMonitor:
             'Accept-Language': 'pl-PL,pl;q=0.9'
         })
         self._init_db()
+
+    def start_monitoring(self):
+        while True:
+            print(f"\n--- Start cyklu: {datetime.now().strftime('%H:%M:%S')} ---", flush=True)
+            
+            all_offers = self.scrape_olx() + self.scrape_otodom()
+            new_ones = self.save_and_filter(all_offers)
+            
+            print(f"✨ Znaleziono {len(all_offers)} ofert, w tym {len(new_ones)} NOWYCH.", flush=True)
+            self.generate_dashboard()
+            
+            # Pobieramy interwał z konfiguracji
+            interval = self.config.get('update_interval', 1800)
+            next_run = datetime.now() + timedelta(seconds=interval)
+            
+            print(f"💤 Zasypiam na {interval // 60} minut. Kolejne sprawdzenie o {next_run.strftime('%H:%M:%S')}", flush=True)
+            time.sleep(interval)
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -152,85 +169,79 @@ class RealEstateMonitor:
     def generate_dashboard(self):
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            # Pobieramy 60 najnowszych ofert
             rows = conn.execute('SELECT * FROM properties ORDER BY first_seen DESC LIMIT 60').fetchall()
         
         cards_content = ""
         for r in rows:
-            # Formatowanie dat dla lepszej czytelności
-            try:
-                added_dt = datetime.fromisoformat(r['first_seen']).strftime('%d.%m %H:%M')
-                updated_dt = datetime.fromisoformat(r['last_seen']).strftime('%d.%m %H:%M')
-            except:
-                added_dt = r['first_seen']
-                updated_dt = r['last_seen']
-
-            portal_color = "#00b54b" if r['portal'] == 'otodom' else "#002f34"
+            # Poprawka formatowania dat, aby uniknąć błędów
+            added = r['first_seen'][:16].replace('T', ' ') if r['first_seen'] else "---"
+            seen = r['last_seen'][:16].replace('T', ' ') if r['last_seen'] else "---"
             
+            portal_bg = "#00b54b" if r['portal'] == 'otodom' else "#002f34"
+            
+            # Budujemy pojedynczą kolumnę z kartą
             cards_content += f"""
             <div class="col-md-6 col-lg-4 mb-4">
                 <div class="card h-100 shadow-sm border-0">
-                    <div class="card-header d-flex justify-content-between align-items-center bg-white border-0 pt-3">
-                        <span class="badge" style="background-color: {portal_color}">{r['portal'].upper()}</span>
+                    <div class="card-header d-flex justify-content-between bg-white border-0 pt-3">
+                        <span class="badge" style="background-color: {portal_bg}; color: white;">{r['portal'].upper()}</span>
                         <small class="text-muted">ID: #{r['id']}</small>
                     </div>
                     <div class="card-body">
-                        <h5 class="card-title text-truncate" title="{r['title']}">{r['title']}</h5>
-                        <div class="d-flex align-items-baseline mb-2">
-                            <span class="h4 mb-0 text-danger">{r['price']:,} zł</span>
-                            <span class="ms-2 text-muted small">({r['price_per_m2']:,} zł/m²)</span>
+                        <h6 class="card-title fw-bold" style="height: 3rem; overflow: hidden;">{r['title']}</h6>
+                        <div class="mb-2">
+                            <span class="h4 text-danger fw-bold">{r['price']:,} zł</span><br>
+                            <small class="text-muted">({r['price_per_m2']:,} zł/m²)</small>
                         </div>
-                        <p class="card-text mb-1"><strong>Powierzchnia:</strong> {r['area']} m²</p>
-                        <p class="card-text"><i class="bi bi-geo-alt"></i> {r['location']}</p>
+                        <p class="mb-1 small"><strong>Powierzchnia:</strong> {r['area']} m²</p>
+                        <p class="small text-muted"><i class="bi bi-geo-alt"></i> Wrocław</p>
                     </div>
-                    <div class="card-footer bg-light border-0 pb-3">
-                        <div class="row g-0 text-center small text-muted mb-3">
+                    <div class="card-footer bg-light border-0">
+                        <div class="row g-0 text-center small mb-3">
                             <div class="col-6 border-end">
-                                <div>Dodano</div>
-                                <strong>{added_dt}</strong>
+                                <div class="text-muted" style="font-size: 0.7rem;">DODANO</div>
+                                <strong>{added}</strong>
                             </div>
                             <div class="col-6">
-                                <div>Widziano</div>
-                                <strong>{updated_dt}</strong>
+                                <div class="text-muted" style="font-size: 0.7rem;">WIDZIANO</div>
+                                <strong>{seen}</strong>
                             </div>
                         </div>
-                        <a href="{r['url']}" target="_blank" class="btn btn-outline-dark w-100">Otwórz ofertę</a>
+                        <a href="{r['url']}" target="_blank" class="btn btn-dark btn-sm w-100">Otwórz ofertę</a>
                     </div>
                 </div>
             </div>"""
 
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
+        # Pełny dokument HTML z poprawnym linkowaniem Bootstrapa
         html = f"""<!DOCTYPE html>
         <html lang="pl">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/bootstrap.min.css" rel="stylesheet">
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-            <title>Monitor Nieruchomości</title>
+            <title>Wrocław Property Monitor</title>
             <style>
-                body {{ background-color: #f4f7f6; font-family: 'Inter', sans-serif; }}
-                .navbar {{ background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
-                .card {{ transition: transform 0.2s; }}
-                .card:hover {{ transform: translateY(-5px); }}
+                body {{ background-color: #f0f2f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }}
+                .navbar {{ background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }}
+                .card {{ border-radius: 12px; overflow: hidden; transition: all 0.3s ease; }}
+                .card:hover {{ transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important; }}
             </style>
         </head>
         <body>
-            <nav class="navbar sticky-top mb-4 py-3">
-                <div class="container text-center">
-                    <span class="navbar-brand mb-0 h1 mx-auto">🏠 Wrocław Property Monitor</span>
+            <nav class="navbar mb-5 py-3">
+                <div class="container d-flex justify-content-between align-items-center">
+                    <span class="navbar-brand mb-0 h4 fw-bold text-dark">🏠 Property Monitor</span>
+                    <span class="badge bg-light text-dark border small">Aktualizacja: {now_str}</span>
                 </div>
             </nav>
             <div class="container">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h4 class="mb-0">Najnowsze oferty</h4>
-                    <span class="badge bg-secondary">Aktualizacja: {now_str}</span>
-                </div>
                 <div class="row">
                     {cards_content}
                 </div>
             </div>
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/bootstrap.bundle.min.js"></script>
         </body>
         </html>"""
         
