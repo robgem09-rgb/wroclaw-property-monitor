@@ -9,6 +9,13 @@ from typing import List, Dict
 from bs4 import BeautifulSoup
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+class MyHandler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # Wymuszamy kodowanie UTF-8 i typ HTML dla głównej strony
+        if self.path == "/" or self.path.endswith(".html"):
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+        super().end_headers()
+
 class RealEstateMonitor:
     def __init__(self):
         # 1. Najpierw definiujemy ścieżki i parametry podstawowe
@@ -244,7 +251,8 @@ class RealEstateMonitor:
 
     def run_server(self):
         server_address = ('', self.port)
-        httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+        # Używamy naszego poprawionego handlera zamiast domyślnego
+        httpd = HTTPServer(server_address, MyHandler)
         print(f"🚀 Server running on port {self.port}", flush=True)
         httpd.serve_forever()
 
