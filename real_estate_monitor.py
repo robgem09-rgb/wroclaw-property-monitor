@@ -11,9 +11,13 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 class RealEstateMonitor:
     def __init__(self):
-        # ... reszta initu ...
+        # 1. Najpierw definiujemy ścieżki i parametry podstawowe
+        self.db_path = 'properties.db'
+        self.port = int(os.environ.get('PORT', 10000))
+        
+        # 2. Definiujemy konfigurację (w tym interwał aktualizacji)
         self.config = {
-            'update_interval': 1800,  # Domyślnie 30 minut (w sekundach)
+            'update_interval': 1800,  # 30 minut w sekundach
             'criteria': {
                 'min_price': 300000,
                 'max_price': 900000,
@@ -21,11 +25,14 @@ class RealEstateMonitor:
                 'max_area': 100
             }
         }
+        
+        # 3. Inicjalizujemy sesję i bazę danych (teraz self.db_path już istnieje)
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'pl-PL,pl;q=0.9'
         })
+        
         self._init_db()
 
     def _init_db(self):
