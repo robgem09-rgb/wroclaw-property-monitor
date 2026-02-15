@@ -4,7 +4,7 @@ import sqlite3
 import requests
 import threading
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict
 from bs4 import BeautifulSoup
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -27,23 +27,6 @@ class RealEstateMonitor:
             'Accept-Language': 'pl-PL,pl;q=0.9'
         })
         self._init_db()
-
-    def start_monitoring(self):
-        while True:
-            print(f"\n--- Start cyklu: {datetime.now().strftime('%H:%M:%S')} ---", flush=True)
-            
-            all_offers = self.scrape_olx() + self.scrape_otodom()
-            new_ones = self.save_and_filter(all_offers)
-            
-            print(f"✨ Znaleziono {len(all_offers)} ofert, w tym {len(new_ones)} NOWYCH.", flush=True)
-            self.generate_dashboard()
-            
-            # Pobieramy interwał z konfiguracji
-            interval = self.config.get('update_interval', 1800)
-            next_run = datetime.now() + timedelta(seconds=interval)
-            
-            print(f"💤 Zasypiam na {interval // 60} minut. Kolejne sprawdzenie o {next_run.strftime('%H:%M:%S')}", flush=True)
-            time.sleep(interval)
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -260,12 +243,21 @@ class RealEstateMonitor:
 
     def start_monitoring(self):
         while True:
-            print(f"\n--- Cycle Start: {datetime.now().strftime('%H:%M:%S')} ---", flush=True)
+            print(f"\n--- Start cyklu: {datetime.now().strftime('%H:%M:%S')} ---", flush=True)
+            
             all_offers = self.scrape_olx() + self.scrape_otodom()
             new_ones = self.save_and_filter(all_offers)
-            print(f"✨ Found {len(all_offers)} offers, {len(new_ones)} are NEW.", flush=True)
+            
+            print(f"✨ Znaleziono {len(all_offers)} ofert, w tym {len(new_ones)} NOWYCH.", flush=True)
             self.generate_dashboard()
-            time.sleep(1800) # 30 min
+            
+            # Pobieramy interwał z konfiguracji
+            interval = self.config.get('update_interval', 1800)
+            next_run = datetime.now() + timedelta(seconds=interval)
+            
+            print(f"💤 Zasypiam na {interval // 60} minut. Kolejne sprawdzenie o {next_run.strftime('%H:%M:%S')}", flush=True)
+            time.sleep(interval)
+
 
 if __name__ == "__main__":
     monitor = RealEstateMonitor()
