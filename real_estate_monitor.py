@@ -667,19 +667,15 @@ class RealEstateMonitor:
             """
 
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        final_html = html_template.format(
-            last_update=now_str,
-            table_rows=rows
-        )
+        final_html = html_template.replace("{last_update}", now_str).replace("{table_rows}", rows)
 
         try:
-            # Używamy relatywnej ścieżki (naprawia błąd /home/claude/)
             output_path = 'dashboard.html'
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(final_html)
-            print(f"✅ Dashboard zapisany pomyślnie w: {output_path}", flush=True)
+            print(f"✅ Dashboard zapisany pomyślnie!", flush=True)
         except Exception as e:
-            print(f"❌ Błąd zapisu pliku HTML: {e}", flush=True)    
+            print(f"❌ Błąd zapisu pliku HTML: {e}", flush=True) 
     def check_properties(self):
         """Główny proces: pobierz, zapisz i odśwież dashboard"""
         print(f"\n{'='*60}", flush=True)
